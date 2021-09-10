@@ -54,8 +54,8 @@ fontsize: 12pt
 {\bf \Large Título}\\ [6cm]
 
 {\large Bruno Martinez de Farias, RA: 181980} \\ [0.2cm]
-{\large Leonardo M. Colussi, RA: 220129} \\ [2cm]      
-
+{\large Leonardo M. Colussi, RA: 220129} \\ [0.2cm]      
+{\large Vinícius Litvinoff Justus, RA: 245362} \\[2cm] 
 
 {\large Campinas}\\ [0.2cm]
 {\large 04 outubro de 2021}
