@@ -53,10 +53,10 @@ fontsize: 12pt
 
 {\large Universidade Estadual de Campinas}\\ [0.2cm] 
 {\large Instituto de Matemática, Estatística e Matemática Computacional - IMECC}\\ [0.2cm] 
-{\large Inferência Estatística na Era Computacional - ME904}\\ [5cm]
+{\large Inferência Estatística na Era Computacional - ME904}\\ [6cm]
 
 
-{\bf \Large Regressão Logística Penalizada}\\ [6cm]
+{\bf \Large Regressão Logística Penalizada}\\ [8cm]
 
 {\large Bruno Martinez de Farias} \\ [0.2cm]
 {\large Leonardo Mazzamboni Colussi} \\ [0.2cm]
