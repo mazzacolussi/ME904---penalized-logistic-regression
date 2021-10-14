@@ -592,7 +592,7 @@ fit_lasso = train(
 
 \quad Da Figura \ref{fig:coefs2}, nota-se que os coeficientes simulados como zero convergiram rapidamente para esse valor, no caso da regularização $\ell_1$. Em contrapartida, utilizando-se a regularização $\ell_2$, os valores dos coeficientes nunca convergem para o valor nulo, por mais próximo que seja, $\forall \lambda$. Além disso, para esse segundo método, a desprezível influência dos coeficientes simulados com valores nulos não foi percebida de imediato, dado o grande intervalo de valores considerado para o parâmetro de afinação, quando comparado ao primeiro método.
 
-```{r coefs2, fig.cap = "Gráficos dos valores de lambda em relação aos coeficientes obtidos da regularização Lasso e Ridge, para n < p.", echo = FALSE, warning = FALSE, message = FALSE, fig.height = 4, fig.width = 8, fig.align = "center"}
+```{r coefs2, fig.cap = "Gráficos dos valores de lambda em relação aos coeficientes obtidos da regularização Lasso e Ridge, para n < q.", echo = FALSE, warning = FALSE, message = FALSE, fig.height = 4, fig.width = 8, fig.align = "center"}
 
 # Configuracao dos graficos das simulacoes n < p, lasso e ridge
 
