@@ -12,7 +12,14 @@ header-includes:
   - \usepackage[utf8]{inputenc}
   - \usepackage[T1]{fontenc}
   - \usepackage[fixlanguage]{babelbib}
-  
+  - \usepackage{geometry}
+    \geometry{
+    a4paper,
+    total={170mm,257mm},
+    left=20mm,
+    top=20mm,
+    }
+      
   - \usepackage{graphicx}
   - \usepackage{wrapfig}
   - \usepackage[final]{pdfpages}
@@ -43,25 +50,30 @@ fontsize: 12pt
 \begin{titlepage} 
 \begin{center} 
 
-\vfill
-\includegraphics[width=0.2\textwidth]{logo-imecc (1) (1).png}\\ [0.1in]
 
 {\large Universidade Estadual de Campinas}\\ [0.2cm] 
 {\large Instituto de Matemática, Estatística e Matemática Computacional - IMECC}\\ [0.2cm] 
 {\large Inferência Estatística na Era Computacional - ME904}\\ [5cm]
 
 
-{\bf \Large Título}\\ [6cm]
+{\bf \Large Regressão Logística Penalizada}\\ [6cm]
 
-{\large Bruno Martinez de Farias, RA: 181980} \\ [0.2cm]
-{\large Leonardo M. Colussi, RA: 220129} \\ [0.2cm]      
-{\large Vinícius Litvinoff Justus, RA: 245362} \\[2cm] 
+{\large Bruno Martinez de Farias} \\ [0.2cm]
+{\large Leonardo Mazzamboni Colussi} \\ [0.2cm]
+{\large Vinícius Litvinoff Justus} \\ [2cm]  
+ 
+
 
 {\large Campinas}\\ [0.2cm]
-{\large 04 outubro de 2021}
+{\large 2021}
 
 \end{center}
 \end{titlepage}
+
+\newpage
+\pdfbookmark[0]{\contentsname}{toc}
+\tableofcontents
+\cleardoublepage
 
 ```{r setup, include = FALSE}
 
@@ -82,3 +94,1321 @@ options(OutDec = ",",
 
 ```
 
+```{r}
+
+# Packages
+library(tidyverse)
+library(caret)
+library(glmnet)
+library(ModelMetrics)
+library(janitor)
+library(kableExtra)
+library(coefplot)
+library(ggrepel)
+library(gridExtra)
+library(ggpubr)
+library(tidymodels)
+library(coefplot)
+library(polycor)
+library(ggcorrplot)
+library(ROCR)
+
+```
+
+\section{Introdução}
+
+\quad Um problema de regressão linear múltipla é um caso em que se assume a estrutura $Y_i = \beta_0 + \sum_{j=1}^q  \beta_j X_{ji} + \varepsilon_i$, onde $\varepsilon_i$, o termo de erro, é uma variável aleatória *i.i.d.* com distribuição normal, média $\mu$ e variância constante. Em outras palavras, assume-se que o valor esperado da variável resposta $Y_i$ é uma função linear das preditoras $X_{1i}, ..., X_{qi}$, com $i = 1, ..., n$.
+
+\quad No entanto, há muitas situações em que não é razoável assumir que a variável resposta varie linearmente com relação às variáveis independentes, podendo ser mais apropriado considerar uma função $g$. Esse tipo de problema motiva a criação dos modelos lineares generalizados, onde $Y_i|X_{1i}, ..., X_{qi}$ não é mais necessariamente uma variável aleatória com distribuição normal. Mais especificamente, na regressão logística, que é o caso particular de modelo linear generalizado de interesse, assume-se que $Y_i|X_{1i}, ..., X_{qi}$ possui distribuição binomial.
+
+\quad O objetivo deste trabalho é explorar a regressão logística penalizada, ou seja, a aplicação de técnicas de regularização à regressão logística. Para isto, a seção seguinte introduzirá a regressão logística e os termos de penalização; na seção 3, será possível visualizar o funcionamento do método através de simulações, e, por fim, a última trará uma aplicação em dados reais.
+
+\section{Metodologia}
+
+\subsection{Regressão Logística}
+
+\quad Embora seja possível aplicar a regressão logística em dados multicategóricos, este trabalho focará na sua aplicação e interpretação em dados binários. Assim, assume-se que se tem uma variável resposta $Y_i$ binária e se deseja estimar a probabilidade de $Y_i = 1$ com base nas variáveis explicativas $X_{1i}, ...,X_{qi}$. Uma solução ingênua para o problema é modelar uma regressão linear, da forma $E(Y_i|X_{1i},...,X_{qi}) = \beta_0 + \sum_{j=1}^q \beta_j X_{ji}$.
+
+\quad Desse modo, a menos que todos os coeficientes (com exceção do intercepto) sejam nulos - o que parece extremamente implausível -, a esperança condicional de $Y_i|X_{1i}, ..., X_{qi}$ será uma reta, plano ou hiperplano, o que, inevitavelmente, acarreta na possibilidade de se estimar probabilidades negativas ou maiores do que 1. Isto, evidentemente, é problemático e implica no descarte da regressão linear como modelo de um estudo cuja variável resposta é categórica.
+
+\quad Uma possibilidade mais interessante é, ao invés de se modelar a probabilidade $p_i$, modelar a chance $r_i$, representada na Equação \ref{eq:chances}.
+
+\begin{eqnarray}
+\label{eq:chances}
+r_i = \frac{p_i}{1 - p_i}.
+\end{eqnarray}
+
+\quad É possível demonstrar que existe uma relação $1:1$ entre $p_i$ e $r_i$, de modo que existe uma única chance associada a cada probabilidade e vice-versa. Também é possível notar que, para $p_i \in (0,1)$, $r_i \in (0, \infty)$.
+
+\quad Então, a Equação \ref{eq:logit} expressa a função *logit* (ou log da chance), que modela linearmente a chance obtida da Equação \ref{eq:chances}.
+
+\begin{eqnarray}
+\label{eq:logit}
+g(p_i)= log \Big( \frac{p_i}{1 - p_i} \Big) = \beta_0 + \sum_{j=1}^q  \beta_j X_{ji}.
+\end{eqnarray}
+
+
+\quad Agora, finalmente, tem-se a função $g$ de ligação do modelo linear generalizado. Se o log da chance varia linearmente com relação às preditoras, então as chances são funções de uma exponencial, o que significa que, de fato, essas sempre serão positivas. Logo, veja que as expressões obtidas das Equações \ref{eq:logit} e \ref{eq:logit2} são equivalentes.
+
+\begin{eqnarray}
+\label{eq:logit2}
+p_i = \frac{1}{1 + e^{-(\beta_0 + \sum_{j=1}^q  \beta_j X_{ji})}}.
+\end{eqnarray}
+
+\quad Assim, estimando as *logit*'s, pode-se recuperar as estimativas das probabilidades $p_i$.
+
+\subsection{\textit{Ridge} e \textit{Lasso}}
+
+\quad Existe várias maneiras de se estimar os coeficientes $\beta_j$'s de uma regressão logística. Usualmente, utiliza-se os estimadores de mínimos quadrados ordinários, ou seja, busca-se os coeficientes que minimizam a soma de quadrados dos resíduos, representada pela Equação \ref{eq:difquad}.
+
+\begin{eqnarray}
+\label{eq:difquad}
+\sum_{i=1}^{n}(\hat{y}_i - y_i)^2.
+\end{eqnarray}
+
+\quad Na regressão com regularização $\ell_2$ (*ridge*), a expressão que se deseja minimizar (originalmente, a soma de quadrados dos resíduos) recebe um novo termo que depende do tamanho dos coeficientes $\beta_{j, j \geq 1}$'s. Assim, deseja-se minimizar a Equação \ref{eq:reg}.
+
+\begin{eqnarray}
+\label{eq:reg}
+\sum_{i=1}^{n}(\hat{y}_i - y_i)^2 + \lambda \sum_{j=1}^{q}(\beta_j)^2,
+\end{eqnarray}
+
+em que $\lambda$ é um parâmetro de ajuste fino, atuando na seleção de parâmetros $\beta_{j, j \geq 1}$'s mais influentes para o modelo. Na prática, $\lambda$ é determinado via validação cruzada ou via divisão de dados em treinamento e validação, quando a base de dados utilizada é consideravelmente grande.
+
+
+\quad A regressão com regularização $\ell_1$ (*lasso*) opera de maneira semelhante, mudando apenas o mecanismo de penalização, dada pela Equação \ref{eq:lasso}.
+
+\begin{eqnarray}
+\label{eq:lasso}
+\sum_{i=1}^{n}(\hat{y}_i - y_i)^2 + \lambda \sum_{j=1}^{q}|\beta_j|,
+\end{eqnarray}
+
+tal que $\lambda$ não necessariamente é o mesmo parâmetro adotado na *ridge*.
+
+\quad Há várias razões práticas pelo qual se pode adotar as técnicas de regularização, dentre as quais se cita:   
+
+\begin{itemize}
+\item A penalização do tamanho dos coeficientes evita o \textit{overfitting}, já que introduz um pequeno viés na estimativa através da introdução do coeficiente $\lambda$ na matriz que precisa ser invertida;
+\item A eventual presença de multicolinearidade entre preditoras é corrigida;
+\item Situações em que há mais preditoras do que observações, a introdução do termo de penalização também garante a unicidade da estimativa.
+\end{itemize}
+
+
+\section{Simulações}
+
+```{r}
+
+# funcoes para as replicacoes, retornando a media das estimativas, DP e EQM
+
+simFit = function(metodo = 1, n, rep){
+  
+  params = c(-9, 1, 3.7, 0.4, 0.5, 0.2)
+  estimativas = matrix(0, ncol = 6, nrow = rep, byrow = T)
+ 
+  if (metodo == "0" | metodo == "1"){
+    
+    for (k in 1:rep){
+      
+      set.seed(k)
+      x1 = factor(sample(c(0,1), size = n, replace = TRUE, prob = c(0.5, 0.5))) 
+      x2 = factor(sample(c(0,1), size = n, replace = TRUE, prob = c(0.9, 0.1))) 
+      x3 = factor(sample(c(0, 1, 2), size = n, replace = TRUE)) 
+      x4 = round(runif(n, 18, 60))
+      
+      xb = params[1] + params[2]*(x1 == "1") + params[3]*(x2 == "1") + 
+        params[4]*(x3 == "1") + params[5]*(x3 == "2") + params[6]*x4
+      
+      p = 1/(1 + exp(-xb))
+      y = rbinom(n = n, size = 1, prob = p)
+      
+      dados = data.frame(x1, x2, x3, x4, y)
+      
+      idtrain = createDataPartition(dados$y, p = 0.8, list = FALSE)
+      train = dados %>% slice(idtrain)
+      test = dados %>% slice(-idtrain)
+      
+      xtrain = model.matrix(y ~., data = train)[, -1]
+      
+      penalti.cv = cv.glmnet(xtrain, train$y, alpha = metodo, family = "binomial")
+      
+      remover = round(coef(penalti.cv, s = "lambda.min"), digits = 4)
+      rownames(remover) = NULL
+      
+      estimativas[k, ] = round(coef(penalti.cv, s = "lambda.min"), digits = 4)[, 1]
+      
+    }
+  }else if(metodo == "full"){
+    
+    for (k in 1:rep){
+      
+      set.seed(k)
+      x1 = factor(sample(c(0,1), size = n, replace = TRUE, prob = c(0.5, 0.5))) 
+      x2 = factor(sample(c(0,1), size = n, replace = TRUE, prob = c(0.9, 0.1))) 
+      x3 = factor(sample(c(0, 1, 2), size = n, replace = TRUE)) 
+      x4 = round(runif(n, 18, 60))
+      
+      xb = params[1] + params[2]*(x1 == "1") + params[3]*(x2 == "1") + 
+        params[4]*(x3 == "1") + params[5]*(x3 == "2") + params[6]*x4
+      
+      p = 1/(1 + exp(-xb))
+      y = rbinom(n = n, size = 1, prob = p)
+      
+      dados = data.frame(x1, x2, x3, x4, y)
+      
+      full_model = glm(y ~ ., family = "binomial", data = dados)
+      
+      estimativas[k, ] = round(coef(full_model), digits = 4)
+    }
+  }
+  
+  medias = c(mean(estimativas[, 1]), 
+             mean(estimativas[, 2]), 
+             mean(estimativas[, 3]), 
+             mean(estimativas[, 4]), 
+             mean(estimativas[, 5]), 
+             mean(estimativas[, 6]))
+  
+  
+  dp = c(sd(estimativas[, 1]), 
+         sd(estimativas[, 2]), 
+         sd(estimativas[, 3]), 
+         sd(estimativas[, 4]), 
+         sd(estimativas[, 5]), 
+         sd(estimativas[, 6]))
+  
+  
+  EQM = c(dp[1]^2 + (medias[1] - params[1])^2,
+          dp[2]^2 + (medias[2] - params[2])^2,
+          dp[3]^2 + (medias[3] - params[3])^2,
+          dp[4]^2 + (medias[4] - params[4])^2,
+          dp[5]^2 + (medias[5] - params[5])^2,
+          dp[6]^2 + (medias[6] - params[6])^2)
+  
+  return(list(estimativas = estimativas, medias = medias, dp = dp, EQM = EQM, parametros = params))
+}
+
+```
+
+\quad Para essa seção, realizou-se simulações com duas amostras de tamanhos distintos, cada uma com 100 replicações, ambas com quatro variáveis simuladas de forma diferente entre si e, para cada replicação, foi armazenada uma semente com os estimadores dos parâmetros de uma regressão logística não penalizada, penalizada pela regularização $\ell_1$ (*lasso*) e, por último, pela regularização $\ell_2$ (*ridge*). Assim, obteve-se a média das estimativas de cada parâmetro, assim como o desvio padrão (DP) e o erro quadrático médio (EQM). Ainda, simulou-se uma amostra da forma $n < q$, em que $n$ e $q$ são os números de observações da amostra e de parâmetros, respectivamente.
+
+
+\quad Sendo assim, as variáveis simuladas foram:
+
+\begin{itemize}
+\item $X_1$: variável binária, com probabilidade igual a $50\%$ de pertencer a uma das classes;
+\item $X_2$: variável binária, no entanto, desbalanceada, com $90\%$ de pertencer à primeira classe e $10\%$ à segunda;
+\item $X_3$: variável com 3 classes, distribuídas uniformemente;
+\item $X_4$: variável numérica, gerada conforme uma distribuição uniforme no intervalo de 18 a 60, com valores inteiros.
+\end{itemize}
+
+
+\quad Inicialmente, simulou-se os dados de uma amostra de tamanho igual a $n = 100$ com $100$ replicações,  obtendo estimativas dos parâmetros ^[Os valores verdadeiros dos parâmetros são: $\beta_0=-9$, $\beta_1=1$, $\beta_2=3,7$, $\beta_3=0,4$, $\beta_4=0,5$, $\beta_5=0,2$.] para cada método, conforme a Tabela \ref{tab:tabsim1}.
+
+
+```{r tabsim1}
+
+# Tabela das estimativas com 100 rep
+
+ridge = simFit(0, 100, 100)
+lasso = simFit(1, 100, 100)
+normal = simFit("full", 100, 100)
+
+tabela1 = data.frame("Média" = c(normal$medias[1], normal$medias[2], normal$medias[3],
+                                 normal$medias[4], normal$medias[5], normal$medias[6]),
+                     "DP" = c(normal$dp[1], normal$dp[2], normal$dp[3], 
+                              normal$dp[4], normal$dp[5], normal$dp[6]),
+                     "EQM" = c(normal$EQM[1], normal$EQM[2], normal$EQM[3], 
+                              normal$EQM[4], normal$EQM[5], normal$EQM[6]),
+                     "Média" = c(ridge$medias[1], ridge$medias[2], ridge$medias[3],
+                                 ridge$medias[4], ridge$medias[5], ridge$medias[6]),
+                     "DP" = c(ridge$dp[1], ridge$dp[2], ridge$dp[3], 
+                              ridge$dp[4], ridge$dp[5], ridge$dp[6]),
+                     "EQM" = c(ridge$EQM[1], ridge$EQM[2], ridge$EQM[3], 
+                              ridge$EQM[4], ridge$EQM[5], ridge$EQM[6]),
+                     "Média" = c(lasso$medias[1], lasso$medias[2], lasso$medias[3],
+                                 lasso$medias[4], lasso$medias[5], lasso$medias[6]),
+                     "DP" = c(lasso$dp[1], lasso$dp[2], lasso$dp[3], 
+                              lasso$dp[4], lasso$dp[5], lasso$dp[6]),
+                     "EQM" = c(lasso$EQM[1], lasso$EQM[2], lasso$EQM[3], 
+                              lasso$EQM[4], lasso$EQM[5], lasso$EQM[6]))
+
+row.names(tabela1) = c("$\\hat{\\beta}_0$", "$\\hat{\\beta}_1$", "$\\hat{\\beta}_2$", 
+                       "$\\hat{\\beta}_3$", "$\\hat{\\beta}_4$", "$\\hat{\\beta}_5$")
+
+
+knitr::kable(tabela1, booktabs = T, linesep = "",
+             caption = "Simulação de amostras de tamanho 100, com 100 replicações.",
+             col.names = c("Média", "DP", "EQM",
+                           "Média", "DP", "EQM",
+                           "Média", "DP", "EQM"),
+             digits = 3,
+             escape = F) %>%
+             add_header_above(c(" " = 1,
+                             "Sem penalização" = 3,
+                             "Penalização Ridge" = 3,
+                             "Penalização Lasso" = 3),
+                             escape = F) %>%
+            kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+
+```
+
+\quad Dessa forma, nota-se que, para esse primeiro caso, as estimativas com menor EQM são obtidas pelo método da regressão logística com regularização $\ell_1$, enquanto para a regularização $\ell_2$ o viés é consideravelmente alto, o que implica no alto EQM. No que tange às estimativas referentes à regressão logística sem penalidade, os estimadores são obtidos pelo método de máxima verossimilhança, cujos parâmetros têm boas propriedades assintóticas. Logo, conforme o tamanho da amostra aumenta, as estimativas tendem a ser melhores para seus respectivos parâmetros.
+
+\quad Aumentando o tamanho da amostra para $n = 1000$, obteve-se as estimativas da Tabela \ref{tab:tabsim2}. Como dito anteriormente, é esperado que as estimativas para a regressão logística sem penalidade sejam mais próximas aos verdadeiros valores dos parâmetros, conforme $n \rightarrow \infty$. No entanto, os valores das estimativas para a regularização $\ell_1$ se apresentaram bem próximos aos valores reais dos parâmetros, mesmo que o método tenha como objetivo inserir um pequeno viés aos estimadores, com a intenção de diminuir a variância destes. Por sua vez, a regularização $\ell_2$ apresentou os piores valores estimados para cada parâmetro.
+
+
+```{r tabsim2}
+
+# Tabela das estimativas com 1000 rep
+
+ridge = simFit(0, 1000, 100)
+lasso = simFit(1, 1000, 100)
+normal = simFit("full", 1000, 1000)
+
+tabela2 = data.frame("Média" = c(normal$medias[1], normal$medias[2], normal$medias[3],
+                                 normal$medias[4], normal$medias[5], normal$medias[6]),
+                     "DP" = c(normal$dp[1], normal$dp[2], normal$dp[3], 
+                              normal$dp[4], normal$dp[5], normal$dp[6]),
+                     "EQM" = c(normal$EQM[1], normal$EQM[2], normal$EQM[3], 
+                               normal$EQM[4], normal$EQM[5], normal$EQM[6]),
+                     "Média" = c(ridge$medias[1], ridge$medias[2], ridge$medias[3],
+                                 ridge$medias[4], ridge$medias[5], ridge$medias[6]),
+                     "DP" = c(ridge$dp[1], ridge$dp[2], ridge$dp[3], 
+                              ridge$dp[4], ridge$dp[5], ridge$dp[6]),
+                     "EQM" = c(ridge$EQM[1], ridge$EQM[2], ridge$EQM[3], 
+                               ridge$EQM[4], ridge$EQM[5], ridge$EQM[6]),
+                     "Média" = c(lasso$medias[1], lasso$medias[2], lasso$medias[3],
+                                 lasso$medias[4], lasso$medias[5], lasso$medias[6]),
+                     "DP" = c(lasso$dp[1], lasso$dp[2], lasso$dp[3], 
+                              lasso$dp[4], lasso$dp[5], lasso$dp[6]),
+                     "EQM" = c(lasso$EQM[1], lasso$EQM[2], lasso$EQM[3], 
+                               lasso$EQM[4], lasso$EQM[5], lasso$EQM[6]))
+
+row.names(tabela2) = c("$\\hat{\\beta}_0$", "$\\hat{\\beta}_1$", "$\\hat{\\beta}_2$", 
+                       "$\\hat{\\beta}_3$", "$\\hat{\\beta}_4$", "$\\hat{\\beta}_5$")
+
+tabela2 = tabela2 %>%
+        mutate(EQM = format.pval(EQM, digits = 2, eps = 0.001, na.form = NA),
+               EQM.2 = format.pval(EQM.2, digits = 2, eps = 0.001, na.form = NA))
+
+
+knitr::kable(tabela2, booktabs = T, linesep = "",
+             caption = "Simulação de amostras de tamanho 1000, com 100 replicações.",
+             col.names = c("Média", "DP", "EQM",
+                           "Média", "DP", "EQM",
+                           "Média", "DP", "EQM"),
+            digits = 3,
+            escape = F) %>%
+            add_header_above(c(" " = 1,
+                             "Sem penalização" = 3,
+                             "Penalização Ridge" = 3,
+                             "Penalização Lasso" = 3),
+                             escape = F) %>%
+            kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+
+```
+
+```{r}
+
+# Gerando os dados
+
+n = 100
+params = c(-9, 1, 3.7, 0.4, 0.5, 0.2)
+
+set.seed(10)
+x1 = factor(sample(c(0,1), size = n, replace = TRUE, prob = c(0.5, 0.5))) 
+x2 = factor(sample(c(0,1), size = n, replace = TRUE, prob = c(0.9, 0.1))) 
+x3 = factor(sample(c(0, 1, 2), size = n, replace = TRUE)) 
+x4 = round(runif(n, 18, 60))
+xb = params[1] + params[2]*(x1 == "1") + params[3]*(x2 == "1") + 
+params[4]*(x3 == "1") + params[5]*(x3 == "2") + params[6]*x4
+p = 1/(1 + exp(-xb))
+y = rbinom(n = n, size = 1, prob = p)
+      
+dados = data.frame(x1, x2, x3, x4, y)
+      
+idtrain = createDataPartition(dados$y, p = 0.8, list = FALSE)
+train = dados %>% slice(idtrain)
+test = dados %>% slice(-idtrain)
+      
+xtrain = model.matrix(y ~., data = train)[, -1]
+
+```
+
+```{r}
+
+# Melhor lambda ridge
+ridge.cv = cv.glmnet(xtrain, 
+                     train$y, 
+                     alpha = 0, 
+                     family = "binomial")
+lambda.ridge = ridge.cv$lambda.min
+
+```
+
+```{r}
+# Melhor lambda lasso
+lasso.cv = cv.glmnet(xtrain, 
+                     train$y, 
+                     alpha = 1, 
+                     family = "binomial")
+lambda.lasso = lasso.cv$lambda.min
+
+```
+
+\quad Assim, extraiu-se uma das amostras da simulação e construiu-se o gráfico da Figura \ref{fig:coefs}. Desse modo, é possível notar que os coeficientes relacionados às variáveis menos influentes para o modelo zeram mais rapidamente para o caso da regularização $\ell_1$ quando comparado à regularização $\ell_2$. Ainda, o valores obtidos de $\lambda$ para esta primeira é consideravelmente menor do que para a segunda regularização, o que é condizente com a interpretação realizada.  
+
+```{r coefs, fig.cap = "Gráficos dos valores de lambda em relação aos coeficientes obtidos da regularização Lasso e Ridge.", echo = FALSE, warning = FALSE, message = FALSE, fig.height = 4, fig.width = 8, fig.align = "center"}
+
+# Configuracao dos graficos n > p, lasso e ridge
+
+betas_lasso = as.matrix(lasso.cv$glmnet.fit$beta)
+lambdas_lasso = lasso.cv$lambda
+names(lambdas_lasso) = colnames(betas_lasso)
+
+df_lasso = as.data.frame(betas_lasso) %>% 
+      tibble::rownames_to_column("variable") %>% 
+      pivot_longer(-variable) %>% 
+      mutate(lambda = lambdas_lasso[name],
+             variable = ifelse(variable == "x11", "beta1",
+                               ifelse(variable == "x21", "beta2",
+                                      ifelse(variable == "x31", "beta3",
+                                             ifelse(variable == "x32", "beta4", "beta5")))))  
+
+colnames(df_lasso)[1] = "Coeficientes"
+
+graf_lasso = df_lasso %>% 
+  ggplot(aes(x = lambda, y = value, col = Coeficientes)) + 
+      geom_line() + 
+      geom_label_repel(data = ~subset(.x, lambda == min(lambda)),
+      aes(label = Coeficientes), nudge_x = -0.5) +
+      scale_x_log10() +
+      labs(x = expression(lambda~Lasso), y = "Coefiecientes") +
+      theme_bw() +
+      theme(legend.position = "none")
+
+betas_ridge = as.matrix(ridge.cv$glmnet.fit$beta)
+lambdas_ridge = ridge.cv$lambda
+names(lambdas_ridge) = colnames(betas_ridge)
+
+
+df_ridge = as.data.frame(betas_ridge) %>% 
+      tibble::rownames_to_column("variable") %>% 
+      pivot_longer(-variable) %>% 
+      mutate(lambda = lambdas_ridge[name],
+             variable = ifelse(variable == "x11", "beta1",
+                               ifelse(variable == "x21", "beta2",
+                                      ifelse(variable == "x31", "beta3",
+                                             ifelse(variable == "x32", "beta4", "beta5"))))) 
+
+colnames(df_ridge)[1] = "Coeficientes"
+
+graf_ridge = df_ridge %>% 
+  ggplot(aes(x = lambda, y = value, col = Coeficientes)) + 
+      geom_line() + 
+      geom_label_repel(data = ~subset(.x, lambda == min(lambda)),
+      aes(label = Coeficientes), nudge_x = -0.5) +
+      scale_x_log10() +
+      labs(x = expression(lambda~Ridge), y = " ") +
+      theme_bw() +
+      theme(legend.position = "none")
+
+ggarrange(graf_lasso, graf_ridge, ncol = 2)
+
+```
+
+\newpage
+
+\quad Para finalizar a seção, simulou-se um caso $n<q$, $n = 1000$ e $q = 2000$, de forma que os valores de cada variável preditora foram gerados com base em uma distribuição normal padrão. Além disso, dado o grande número de parâmetros, a simulação foi feita de forma que apenas os três primeiros fossem significativos, conforme a Equação \ref{eq:betas}.
+
+\begin{eqnarray}
+\label{eq:betas}
+\begin{cases}
+\beta_j = 1, \text{ para } j = 1, 2 \text{ e } 3; \\
+\beta_j = 0, \text{ para } 3 < j \leq 2000.
+\end{cases}
+\end{eqnarray}
+
+
+```{r}
+# Simulacao n < p
+
+set.seed(22)
+n = 1000
+p = 2000
+X = replicate(p, rnorm(n = n))
+beta = c(1, 1, 1, rep(0, p-3))
+z = X %*% beta
+prob = exp(z) / (1 + exp(z))
+y = as.factor(rbinom(length(z), size = 1, prob = prob))
+
+simul_data = data.frame(y, X)
+cv_5 = trainControl(method = "cv", number = 5)
+
+```
+
+```{r}
+
+# ridge
+
+fit_ridge_cv = cv.glmnet(X, y, 
+                         family = "binomial", 
+                         alpha = 0)
+
+ridge_grid = expand.grid(alpha = 0, 
+                         lambda = fit_ridge_cv$lambda.min)
+
+fit_ridge = train(
+  y ~ ., data = simul_data,
+  method = "glmnet",
+  trControl = cv_5,
+  tuneGrid = ridge_grid
+)
+
+```
+
+```{r}
+
+# Lasso
+
+fit_lasso_cv = cv.glmnet(X, y, 
+                         family = "binomial", 
+                         alpha = 1)
+
+lasso_grid = expand.grid(alpha = 1, 
+                         lambda = fit_lasso_cv$lambda.min)
+
+fit_lasso = train(
+  y ~ ., data = simul_data,
+  method = "glmnet",
+  trControl = cv_5,
+  tuneGrid = lasso_grid
+)
+
+
+```
+
+\quad Da Figura \ref{fig:coefs2}, nota-se que os coeficientes simulados como zero convergiram rapidamente para esse valor, no caso da regularização $\ell_1$. Em contrapartida, utilizando-se a regularização $\ell_2$, os valores dos coeficientes nunca convergem para o valor nulo, por mais próximo que seja, $\forall \lambda$. Além disso, para esse segundo método, a desprezível influência dos coeficientes simulados com valores nulos não foi percebida de imediato, dado o grande intervalo de valores considerado para o parâmetro de afinação, quando comparado ao primeiro método.
+
+```{r coefs2, fig.cap = "Gráficos dos valores de lambda em relação aos coeficientes obtidos da regularização Lasso e Ridge, para n < p.", echo = FALSE, warning = FALSE, message = FALSE, fig.height = 4, fig.width = 8, fig.align = "center"}
+
+# Configuracao dos graficos das simulacoes n < p, lasso e ridge
+
+betas_lasso2 = as.matrix(fit_lasso_cv$glmnet.fit$beta)
+lambdas_lasso2 = fit_lasso_cv$lambda
+names(lambdas_lasso2) = colnames(betas_lasso2)
+
+df_lasso2 = as.data.frame(betas_lasso2) %>% 
+      tibble::rownames_to_column("variable") %>% 
+      pivot_longer(-variable) %>% 
+      mutate(lambda = lambdas_lasso2[name])  
+
+colnames(df_lasso2)[1] = "Coeficientes"
+
+graf_lasso2 = df_lasso2 %>% 
+  ggplot(aes(x = lambda, y = value, col = Coeficientes)) + 
+      geom_line() + 
+      scale_x_log10() +
+      labs(x = expression(lambda~Lasso), y = "Coefiecientes") +
+      theme_bw() +
+      theme(legend.position = "none")
+
+betas_ridge2 = as.matrix(fit_ridge_cv$glmnet.fit$beta)
+lambdas_ridge2 = fit_ridge_cv$lambda
+names(lambdas_ridge2) = colnames(betas_ridge2)
+
+
+df_ridge2 = as.data.frame(betas_ridge2) %>% 
+      tibble::rownames_to_column("variable") %>% 
+      pivot_longer(-variable) %>% 
+      mutate(lambda = lambdas_ridge2[name]) 
+
+colnames(df_ridge2)[1] = "Coeficientes"
+
+graf_ridge2 = df_ridge2 %>% 
+  ggplot(aes(x = lambda, y = value, col = Coeficientes)) + 
+      geom_line() + 
+      scale_x_log10() +
+      labs(x = expression(lambda~Ridge), y = " ") +
+      theme_bw() +
+      theme(legend.position = "none")
+
+ggarrange(graf_lasso2, graf_ridge2, ncol = 2)
+
+```
+
+<!-- \quad As acurácias obtidas pelos modelos nessa última simulação, utilizando a regularização $\ell_1$ e $\ell_2$, foram `r format(fit_lasso$results[3], digits = 3)` e `r format(fit_ridge$results[3], digits = 3)`, respectivamente. -->
+
+\section{Aplicação dos Métodos}
+
+\quad Para os ajustes dos modelos de regressão logística com regularização $\ell_1$ e $\ell_2$, o banco de dados utilizado foi particionado aleatóriamente em três conjuntos distintos. O primeiro, base de treinamento, contém $60\%$ da amostra, em que os modelos são ajustados com o objetivo de encontrar o parâmetro de afinação $\lambda$, por meio de validação cruzada. O segundo, dados de validação, que representam $20\%$ da amostra, são aplicados aos ajustes feitos, de modo que a indicação do melhor modelo é realizada com base no EQM dos dados de validação. Sendo assim, após a escolha do melhor modelo e seu respectivo parâmetro de afinação, ajusta-se um novo modelo, agora com os dados de treino e validação conjuntamente. Por fim, o melhor modelo proposto é aplicado aos dados de teste, que compõem os $20\%$ restantes da amostra, para analisar se este apresenta boa performance para dados não utilizados em treinamento e validação.
+
+
+```{r}
+
+# Leitura do banco de dados
+hearth_data = read_csv("framingham_heart_disease.csv") %>% 
+  select(-education) %>% 
+  drop_na() 
+
+# Semente
+set.seed(181980)
+
+# Particao do banco de dados
+split_teste = initial_split(hearth_data, prop = 0.8, strata = TenYearCHD)
+
+# Dados teste 
+teste = split_teste %>% testing()
+
+# Dados treinamento com validacao
+treino_e_valid = split_teste %>% training()
+
+split_treino = initial_split(treino_e_valid, prop = 0.75, strata = TenYearCHD)
+
+# Dados treinamento
+treino = split_treino %>% training()
+
+# Dados validacao
+valid = split_treino %>% testing()
+
+```
+
+\newpage
+
+\subsection{Análise Descritiva}
+
+\quad O conjunto de dados utilizado nessa seção se referem a um estudo feito por médicos residentes na cidade de Framingham, Massachussets, sobre doenças cardíacas. Desse modo, o problema de classificação tem como propósito prever se um paciente tem risco de desenvolver doença cardíaca coronária nos próximos dez anos, com base em algumas informações sobre eles, apresentadas na Tabela \ref{tab:vars}. O banco de dados pode ser encontrado em \href{https://www.kaggle.com/naveengowda16/logistic-regression-heart-disease-prediction}{\textit{Heart Disease Prediction}}.
+
+\quad O banco é composto por quinze variáveis, oito delas são contínuas e sete são categóricas, em que `Risco10anos` é a variável resposta binária (desbalanceada), indicando se o paciente apresenta risco de desenvolver doença cardíaca nos próximos 10 anos. Na Figura 3 está indicada a correlação entre as variáveis do banco de dados, onde pode ser observado que as variáveis `PSSist` e `PSDias` apresentam alta correlação (`r format(cor(treino_e_valid$sysBP,treino_e_valid$diaBP), digits = 3, nsmall = 0)`), assim como `PSMeds` e `Hipertensão` ($0,970$), `PSSist` e `Hipertensão` ($0,848$), `PSDias` e `Hipertensão` ($0,774$) e, por fim, `Fumante` e `CigsPorDia` ($0,903$), certamente.  
+
+\quad Em relação à variável `PSSist`, que se refere à pressão arterial sistólica, observa-se um nível mais elevado em pacientes com risco de doença cardíaca, conforme a Figura \ref{fig:pssist}. Entretanto, as demais variáveis contínuas apresentam distribuições similares em relação aos grupos de pacientes com base na variável resposta.
+
+\quad Ainda, na Figura \ref{fig:age}, é possível observar a distribuição das idades dos pacientes agrupados por ausência ou presença do risco de doença cardíaca. Apesar do número inferior de pacientes com risco, é possível notar que, quanto maior a idade, maior é o número de pacientes com doenças cardíacas e, em contrapartida, o número de pacientes sem risco diminui.
+ 
+\quad Na Tabela \ref{tab:sex}, tem-se a distribuição dos sexos dos pacientes. Assim, independentemente do risco, nota-se a predominância do sexo feminino entre os pacientes. Além disso, a doença cardíaca se mostra mais presente para pacientes com casos de hipertensão, conforme a distribuição da variável `Hipertensão`. No entanto, as demais variáveis categóricas apresentam maior frequência para a classe $0$.
+
+```{r}
+
+# Obtendo o melhor lambda da reg. logistica ridge
+ridge_reg = cv.glmnet(x = as.matrix(treino[,-15]), 
+                      y = treino$TenYearCHD, 
+                      alpha = 0, 
+                      family = "binomial")
+
+lambda_ridge = ridge_reg$lambda.min
+
+# Ajusta a reg. logistica ridge com o lambda obtido anteriormente e calcula o EQM nos dados de treino
+pred_ridge = predict(ridge_reg,
+                     s = lambda_ridge, 
+                     newx = as.matrix(treino[,-15]), 
+                     family = "binomial")
+eqm_treino_ridge = sum((pred_ridge - treino$TenYearCHD)^2)/nrow(treino)
+
+# # Obtendo o melhor lambda da reg. logistica lasso
+lasso_reg = cv.glmnet(x = as.matrix(treino[,-15]), 
+                      y = treino$TenYearCHD, 
+                      alpha = 1, 
+                      family = "binomial")
+lambda_lasso = lasso_reg$lambda.min
+
+# Ajusta a reg. logistica lasso com o lambda obtido anteriormente e calcula o EQM nos dados de treino 
+pred_lasso = predict(lasso_reg, 
+                     s = lambda_lasso, 
+                     newx = as.matrix(treino[,-15]), 
+                     family = "binomial")
+eqm_treino_lasso = sum((pred_lasso - treino$TenYearCHD)^2)/nrow(treino)
+
+```
+
+```{r}
+
+# Ajusta o modelo Ridge e calcula o EQM nos dados de validacao
+predv_ridge = predict(ridge_reg, s = lambda_ridge, newx = as.matrix(valid[,-15]), family = "binomial")
+eqm_valid_ridge = sum((predv_ridge - valid$TenYearCHD)^2)/nrow(valid)
+
+# Ajusta o modelo Ridge e calcula o EQM nos dados de validacao
+predv_lasso = predict(lasso_reg, s = lambda_lasso, newx = as.matrix(valid[,-15]), family = "binomial")
+eqm_valid_lasso = sum((predv_lasso - valid$TenYearCHD)^2)/nrow(valid)
+
+
+```
+
+\subsection{Modelagem}
+
+\quad Nesta seção será realizado o ajuste dos modelos de regressão logística utilizando as regularizações $\ell_1$ (*lasso*) e $\ell_2$ (*ridge*) para o conjunto de treinamento. Sendo assim, obteve-se o valor de $\lambda_{lasso}=$ `r format(lambda_lasso,digits = 3)` e $\lambda_{ridge} =$  `r format(lambda_ridge, digits = 3)`, para os parâmetros de afinação da regressão logística com as regularizações *lasso* e *ridge*, respectivamente, por meio do método de validação cruzada.
+
+\quad Apenas com os parâmetros $\beta_j$'s estimados, é possível observar como a regularização influencia consideravelmente na seleção de variáveis no modelo. Na Tabela \ref{tab:coefi_final}, nota-se que, por um lado, a regularização aplicada pelo parâmetro de afinação $\lambda_{ridge}$ não anula nenhum dos $\beta_{j, j \geq 1}$'s, por menor que sejam. Por outro, a regularização *lasso* apresentou sete parâmetros significantes para o modelo, zerando os demais. Dessa forma, a Tabela \ref{tab:coefi_final} apresenta os coeficientes ajustados no modelo de treinamento.
+
+
+```{r}
+
+# Treinamento com melhor lambda_ridge (base de treino)
+ridge_train = glmnet(x = as.matrix(treino[,-15]), 
+                     y = treino$TenYearCHD, 
+                     lambda = lambda_ridge, 
+                     alpha = 0, 
+                     family = "binomial")
+
+# Coefs regularização ridge (base de treino)
+coef_ridge = tidy(coefficients(ridge_train))
+
+# Treinamento com melhor lambda_lasso (base de treino)
+lasso_train = glmnet(x = as.matrix(treino[,-15]), 
+                     y = treino$TenYearCHD, 
+                     lambda = lambda_lasso, 
+                     alpha = 1, 
+                     family = "binomial")
+
+# Coefs regularização lasso (base de treino)
+coef_lasso = tidy(coefficients(lasso_train))
+
+```
+
+\quad Das duas penalizações utilizadas para o ajuste, o modelo com penalização $\ell_1$ apresentou o menor erro quadrático médio (EQM), tanto em relação aos dados de treinamento, quanto aos dados de validação e, consequentemente, possui a menor taxa de erro de predição. Na Tabela \ref{tab:aval} estão presentes os EQM's dos dois modelos ajustados nos conjuntos de treinamento e validação.
+
+```{r aval}
+
+# Avaliação pelo EQM
+avaliacao = data.frame(Modelos = c("Ridge", "Lasso"),
+                       EQM_treino = c(eqm_treino_ridge, eqm_treino_lasso),
+                       EQM_valid = c(eqm_valid_ridge, eqm_valid_lasso))
+avaliacao %>% 
+      kable(booktabs = T, 
+      caption = "Tabela de EQM por método de ajuste de modelo.",
+      col.names = c("Modelo", "EQM de Treino", "EQM de Validação"), 
+      digits = 3) %>% 
+  kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+```
+
+
+\quad Sendo assim, o modelo com regularização $\ell_1$, cujo parâmetro de afinação é $\lambda_{lasso}=$  `r format(lambda_lasso,digits = 2)`, foi escolhido como ajuste final. Posteriormente a esse passo, reajustou-se novamente o modelo, no entanto, agora considerando os dados de treinamento e validação conjuntamente, mantendo o parâmetro de afinação obtido, o que resultou nos coeficientes da Tabela \ref{tab:coefi_final}.
+
+```{r}
+
+# Ajuste do modelo com regularizacao ridge na base de treino + validacao
+ridge_train_e_valid = glmnet(x = as.matrix(treino_e_valid[,-15]), 
+                             y = treino_e_valid$TenYearCHD, 
+                             lambda =lambda_ridge, 
+                             alpha = 0,
+                             family = "binomial")
+
+# Ajuste do modelo com regularizacao lasso na base de treino + validacao
+lasso_train_e_valid = glmnet(x = as.matrix(treino_e_valid[,-15]), 
+                             y = treino_e_valid$TenYearCHD,
+                             lambda = lambda_ridge, 
+                             alpha = 1, 
+                             family = "binomial")
+
+# Coeficientes do modelo com regularizacao lasso
+lasso_final = tidy(coefficients(lasso_train_e_valid ))
+
+# Configuracao das tabelas dos coeficientes obtidos
+Coef_final = coef_ridge %>% 
+  left_join(coef_lasso, by = c("row")) %>% 
+  left_join(lasso_final, by = c("row")) %>% 
+  select(value.x,value.y,value) %>% 
+  rename(Ridge_treino = value.x,lasso_treino=value.y,ridge_valid=value)
+Coef_final[is.na(Coef_final)] = 0
+
+row.names(Coef_final) = c("$\\hat{\\beta}_0$", "$\\hat{\\beta}_1$", "$\\hat{\\beta}_2$", 
+                       "$\\hat{\\beta}_3$", "$\\hat{\\beta}_4$", "$\\hat{\\beta}_5$",
+                       "$\\hat{\\beta}_6$","$\\hat{\\beta}_7$","$\\hat{\\beta}_8$",
+                       "$\\hat{\\beta}_9$","$\\hat{\\beta}_{10}$","$\\hat{\\beta}_{11}$",
+                       "$\\hat{\\beta}_{12}$","$\\hat{\\beta}_{13}$","$\\hat{\\beta}_{14}$")
+
+```
+
+```{r}
+
+# EQM's (-> MSE's)
+
+treino_e_valid_ridge = predict(ridge_train_e_valid, 
+                               s = lambda_ridge, 
+                               newx = as.matrix(treino_e_valid[,-15]), 
+                               family = "binomial")
+eqm_trino_e_valid_ridge = sum((treino_e_valid_ridge - treino_e_valid$TenYearCHD)^2)/nrow(treino_e_valid)
+
+teste_ridge = predict(ridge_train_e_valid, 
+                      s = lambda_ridge, 
+                      newx = as.matrix(teste[,-15]), 
+                      family = "binomial")
+
+eqm_teste_ridge = sum((teste_ridge - teste$TenYearCHD)^2)/nrow(teste)
+
+treino_e_valid_lasso = predict(lasso_train_e_valid, 
+                               s = lambda_lasso, 
+                               newx = as.matrix(treino_e_valid[,-15]), 
+                               family = "binomial")
+
+eqm_trino_e_valid_lasso = sum((treino_e_valid_lasso - treino_e_valid$TenYearCHD)^2)/nrow(treino_e_valid)
+
+teste_lasso = predict(lasso_train_e_valid, 
+                      s = lambda_lasso, 
+                      newx = as.matrix(teste[,-15]), 
+                      family = "binomial")
+
+eqm_teste_lasso = sum((teste_lasso - teste$TenYearCHD)^2)/nrow(teste)
+
+```
+
+\quad Portanto, o modelo final com as variáveis mais influentes para esse estudo é dado pela Equação \ref{eq:modelofinal}.
+
+\begin{eqnarray}
+\label{eq:modelofinal}
+\log\left(\dfrac{p_i}{1-p_i}\right) &=& -6,393 + 0,376 \cdot \text{Sexo} + 0,051\cdot \text{Idade} + 0,01 \cdot \text{CigsPorDia}\nonumber \\
++ 0,013 \cdot \text{AVC} &+& 0,184 \cdot \text{Hipertensão} + 0,01 \cdot \text{PSSist} + 0,004 \cdot \text{Glicose}.
+\end{eqnarray}
+
+
+\subsection{Diagnóstico do Modelo}
+
+\quad O modelo de regressão logística associa uma probabilidade $p_i$ de $Y_i = 1$ a cada conjunto $X_{1i},...,X_{qi}$ de preditoras. Contudo, o objetivo final do modelo é, através dessas variáveis preditoras, obter uma regra que associe uma categoria para $Y_i$ aos dados utilizados. Deste modo, faz-se necessário estabelecer um ponto de corte, isto é, fixar uma quantidade $p_i^* \in (0,1)$ tal que, a cada valor $p_i$, associa-se o valor $1$ à variável $Y_i$ se $p_i > p_i^*$ e $0$ caso contrário.
+
+\quad A Tabela \ref{tab:mat} apresenta a matriz de confusão do modelo com regularização *lasso* para algumas possíveis probabilidades de corte, $p_i$, que determina a associação da variável resposta ao nível $1$. No contexto do banco de dados escolhido, essa é a probabilidade que associa um paciente a ser classificado como pessoa que apresenta risco de desenvolver doença cardíaca nos próximos dez anos.
+
+```{r}
+
+# grid de lambda
+cv_5 = trainControl(method = "cv", number = 5)
+lasso_grid = expand.grid(alpha = 1, 
+                         lambda = lambda_lasso)
+
+# Treino do modelo com regularizacao lasso
+
+fit_lasso = caret::train(
+  TenYearCHD ~ ., data = treino_e_valid,
+  family = "binomial",
+  method = "glmnet",
+  trControl = cv_5,
+  tuneGrid = lasso_grid,
+  metric = "Response"
+)
+
+# Predicao para o modelo escolhido, com regularizacao lasso
+predicao = predict(fit_lasso, as.matrix(teste[,-15]), s = "lamba.min")
+
+# Matriz de confusão com prob. de corte 0.1
+predict_lasso_classes1 = ifelse(predicao > 0.1, "1", "0")
+matrix1 = caret::confusionMatrix(as.factor(teste$TenYearCHD), 
+                       as.factor(predict_lasso_classes1))
+
+# Matriz de confusão com prob. de corte 0.2
+predict_lasso_classes2 = ifelse(predicao > 0.2, "1", "0")
+matrix2 = caret::confusionMatrix(as.factor(teste$TenYearCHD), 
+                       as.factor(predict_lasso_classes2))
+
+# Matriz de confusão com prob. de corte 0.3
+predict_lasso_classes3 = ifelse(predicao > 0.3, "1", "0")
+matrix3 = caret::confusionMatrix(as.factor(teste$TenYearCHD), 
+                       as.factor(predict_lasso_classes3))
+
+# Matriz de confusão com prob. de corte 0.4
+predict_lasso_classes4 = ifelse(predicao > 0.4, "1", "0")
+matrix4 = caret::confusionMatrix(as.factor(teste$TenYearCHD), 
+                       as.factor(predict_lasso_classes4))
+
+# Matriz de confusão com prob. de corte 0.5
+predict_lasso_classes5 = ifelse(predicao > 0.5, "1", "0")
+matrix5 = caret::confusionMatrix(as.factor(teste$TenYearCHD), 
+                       as.factor(predict_lasso_classes5))
+
+```
+
+```{r mat}
+
+# Configurando as tabelas
+
+mat1 = as.data.frame(matrix1$table) %>% 
+  pivot_wider(names_from = Reference, values_from = Freq) %>% 
+   rename("Referência"= Prediction)
+
+mat2 = as.data.frame(matrix2$table) %>% 
+  pivot_wider(names_from = Reference, values_from = Freq) %>% 
+  select(- Prediction)
+
+mat3 = as.data.frame(matrix3$table) %>% 
+  pivot_wider(names_from = Reference, values_from = Freq) %>% 
+  select(-Prediction)
+
+mat4 = as.data.frame(matrix4$table) %>% 
+  pivot_wider(names_from = Reference, values_from = Freq) %>% 
+  select(- Prediction)
+
+mat5 = as.data.frame(matrix5$table) %>% 
+  pivot_wider(names_from = Reference, values_from = Freq) %>% 
+  select(-Prediction)
+
+mat = cbind(mat1, mat2, mat3, mat4, mat5)
+
+kable(mat, booktabs = T, 
+      caption = "Matriz de confusão para as probabilidades de corte iguais a 0,1;  0,2;  0,3;  0,4 e  0,5.") %>% 
+  kable_styling(latex_options = "HOLD_position", font_size = 9) %>% 
+  add_header_above(c(" " = 1,
+                     "Prob. de Corte 0,1" = 2,
+                     "Prob. de Corte 0,2" = 2,
+                     "Prob. de Corte 0,3" = 2,
+                     "Prob. de Corte 0,4" = 2,
+                     "Prob. de Corte 0,5" = 2)) %>% 
+  add_header_above(c(" " = 1,
+                     "Predição"= 10))
+
+```
+
+\quad Analisando as possíveis probabilidades de corte, quando $p_i^* = 0,10$, tem-se que a proporção de verdadeiros-positivos é de `r format(99/115, digits = 2)` e `r format(347/636, digits=2)` para falsos-positivos. No caso em que $p_i^* = 0,20$, a proporção do primeiro reduz para `r format(64/115, digits= 2)` e a proporção do segundo decai para `r format(127/636, digits = 2)`. A partir de um ponto de corte $p_i^*=0,30$, a proporção de verdadeiros-positivos é inferior a `r format(25/115,digits =2)`, o que dificulta a identificação de pacientes com um real risco de doenças cardíacas. Sendo assim, a disposição dos pontos de corte em relação às taxas de verdadeiros-positivos e falsos-positivos podem ser observadas na Figura $10$, que apresenta o gráfico da curva *ROC* do modelo ajustado.
+
+\quad Apesar da acurácia balanceada ser de $82,56\%$ para uma probabilidade de corte $p_i^* = 0,5$, com base no gráfico da Figura $10$ e no contexto do banco de dados utilizado, um falso-positivo, por mais inapropriado que seja, é conivente com o objetivo do estudo na prevenção de doenças cardíacas em relação a um falso-negativo. Por esse motivo, um ponto de corte aceitável para o problema de classificação seria $p_i^* = 0,15$, com aproximadamente $60\%$ de acurácia balanceada.
+
+\subsection{Interpretação do Modelo}
+
+\quad Para a interpretação do modelo, foi considerado um paciente do sexo masculino, com $50$ anos de idade, não fumante, que faz uso de medicamentos para controle de pressão arterial, já teve um AVC e tem histórico de hipertensão, mas não de diabetes. Dessa forma, mediu-se a pressão sistólica e o nível de glicose do paciente, obtendo um valor de $132,4$ $mmHg$ e $71$ $mg/dl$, respectivamente.
+
+\quad Assim, o modelo ajustado prediz, para esse paciente, a probabilidade obtida na Equação \ref{eq:result}.
+
+\begin{eqnarray}
+\log\left(\dfrac{p_i}{1-p_i}\right) &=& -6,393 + 0,376 \cdot 1 + 0,051\cdot 50 + 0,01 \cdot 0\nonumber\\
+&+& 0,013 1 + 0,184 \cdot 1 + 0,01 \cdot 132,4 + 0,004 \cdot 71.
+\end{eqnarray}
+
+Logo,
+
+\begin{eqnarray}
+\label{eq:result}
+\log\left(\dfrac{p_i}{1-p_i}\right) &=& -2,216; \nonumber \\
+p_i &=& \dfrac{1}{1+e^{-(-2,216)}}; \nonumber \\
+p_i &=& 0,1616.
+\end{eqnarray}
+
+```{r}
+
+# matriz de confusao para prob de corte escolhida, p = 0.15
+
+predicao_final = predict(fit_lasso, as.matrix(teste[,-15]), s = "lamba.min")
+predict_lasso_classes_final = ifelse(predicao_final > 0.15, "1", "0")
+
+matr_conf = caret::confusionMatrix(as.factor(teste$TenYearCHD), 
+                       as.factor(predict_lasso_classes_final))
+
+```
+
+\quad Sob tais condições, a probabilidade desse paciente desenvolver doença cardíaca é de, aproximadamente, $16,16\%$, superior à probabilidade de corte $p_i^*=0,15$ estabelecida. Dessa maneira, ele seria classificado como paciente que apresenta risco de desenvolver uma doença cardíaca nos próximos dez anos.
+
+\newpage
+
+\begin{thebibliography}{9}
+\bibitem{link(1)}\url{https://www.who.int/en/news-room/fact-sheets/detail/cardiovascular-diseases-(cvds)}\\
+\bibitem{link(1)}\text{JAMES, Gareth et al. An introduction to statistical learning, Springer, Nova Iorque, 2013.}\\
+\bibitem{link(1)}\text{FRANKLIN, James. The elements of statistical learning: data mining, inference and prediction.} \\
+\text{The Mathematical Intelligencer, v. 27, n. 2, p. 83-85, 2005.}
+\end{thebibliography}
+
+\newpage
+\section{Apêndices}
+
+\subsection{Tabelas}
+
+```{r vars}
+
+# Descricao das variaveis
+
+description = data.frame("Variáveis" = c("Sexo", "Idade", "Fumante", 
+                                         "CigsPorDia", "PSMeds", "AVC",
+                                         "Hipertensão","Diabetes",
+                                         "ColTotal", "PSSist", "PSDias", "IMC", "FreqCard",
+                                         "Glicose", "Risco10anos"),
+                         "Descrição" = c("Sexo Masculino ou Feminino (Categórica)",
+                         "Idade do paciênte (Contínua)","Se o paciente é ou não fumante (Categórica)",
+                         "Número de cigarros por dia (Contínua)",
+                         "Se o paciente faz uso de medicamento para controle de pressão arterial (Categórica)",
+                         "Se o paciente já sofreu um acidente vascular cerebral (Categórica)",
+                         "Se o paciente é hipertenso ou não (Categórica)",
+                         "Se o paciente tem ou não diabetes (Categórica)",
+                         "Nível de colesterol total (Contínua)",
+                         "Pressão sanguinêa sistólica (Contínua)",
+                         "Pressão sanguinêa diastólica (Contínua)",
+                         "Índice de massa corporal (Contínua)",
+                         "Frequência cardíaca (Contínua)",
+                         "Nível de glicose (Contínua)",
+                         "Risco de doença cardíaca coronária em 10 anos (Categórica)"
+                                        ))
+kable(description, 
+      linesep = "",
+      booktabs = T,
+      caption = "Descrição das variáveis presentes no banco de dados.",label = "vars") %>% 
+  kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+```
+
+```{r sex}
+
+# Tabelas de contingencia dos dados que serviram de ajuste do modelo
+
+Sexo = treino_e_valid %>% 
+  group_by(TenYearCHD, male) %>% 
+  summarise(aux = n()/nrow(treino_e_valid), .groups = "drop") %>% 
+  pivot_wider(names_from = male, values_from = aux) %>% 
+  rename(Feminino = `0`, Masculino = `1`) %>% 
+  mutate(Risco = c("Sem Risco", "Com risco")) %>% 
+  select(Risco, Masculino, Feminino) %>% 
+  mutate_if(is.numeric, format, digits=2, nsmall = 0)
+
+Fumante = treino_e_valid %>% 
+  group_by(TenYearCHD, currentSmoker) %>% 
+  summarise(aux = n()/nrow(treino_e_valid), .groups = "drop") %>% 
+  pivot_wider(names_from = currentSmoker, values_from = aux) %>% 
+  rename(Nao_fumante = `0`, Fumante = `1`) %>% 
+  mutate(Risco = c("Sem Risco", "Com risco")) %>% 
+  select(Risco, Nao_fumante, Fumante) %>% 
+  mutate_if(is.numeric, format, digits=2, nsmall = 0)
+
+kable(list(Sexo,Fumante), 
+      booktabs = T,
+      digits = 3,
+      caption = "Tabela de contingência das variáveis Sexo e Fumante.") %>% 
+  kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+```
+
+```{r meds}
+
+# Tabelas de contingencia dos dados que serviram de ajuste do modelo
+
+Meds = treino_e_valid %>% 
+  group_by(TenYearCHD, BPMeds) %>% 
+  summarise(aux = n()/nrow(treino_e_valid), .groups = "drop") %>% 
+  pivot_wider(names_from = BPMeds, values_from = aux) %>% 
+  rename(Nao_usa = `0`, Usa = `1`) %>% 
+  mutate(Risco = c("Sem Risco", "Com risco")) %>% 
+  select(Risco, Nao_usa, Usa) %>% 
+  mutate_if(is.numeric, format, digits=2, nsmall = 0)
+
+AVC = treino_e_valid %>% 
+  group_by(TenYearCHD, prevalentStroke) %>% 
+  summarise(aux = n()/nrow(treino_e_valid), .groups = "drop") %>% 
+  pivot_wider(names_from = prevalentStroke, values_from = aux) %>% 
+  rename(Nao_teve = `0`, Teve = `1`) %>% 
+  mutate(Risco = c("Sem Risco", "Com risco")) %>% 
+  select(Risco, Nao_teve, Teve) %>% 
+  mutate_if(is.numeric, format, digits=2, nsmall = 0)
+
+kable(list(Meds,AVC), 
+      booktabs = T, 
+      digits = 3,
+      caption = "Tabela de contingência das variáveis PSMeds e AVC.") %>% 
+  kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+```
+
+```{r hiper}
+
+# Tabelas de contingencia dos dados que serviram de ajuste do modelo
+
+hiper = treino_e_valid %>% 
+  group_by(TenYearCHD, prevalentHyp) %>% 
+  summarise(aux = n()/nrow(treino_e_valid), .groups = "drop") %>% 
+  pivot_wider(names_from = prevalentHyp, values_from = aux) %>% 
+  rename(Nao_hiper = `0`, hipertenso = `1`) %>% 
+  mutate(Risco = c("Sem Risco", "Com risco")) %>% 
+  select(Risco, Nao_hiper, hipertenso) %>% 
+  mutate_if(is.numeric, format, digits = 2 ,nsmall = 0)
+
+diabetes = treino_e_valid %>% 
+  group_by(TenYearCHD, diabetes) %>% 
+  summarise(aux = n()/nrow(treino_e_valid), .groups = "drop") %>% 
+  pivot_wider(names_from = diabetes, values_from = aux) %>% 
+  rename(Nao_diab = `0`, diabetes = `1`) %>% 
+  mutate(Risco = c("Sem Risco", "Com risco")) %>% 
+  select(Risco, Nao_diab, diabetes) %>% 
+  mutate_if(is.numeric,format, digits = 2, nsmall = 0)
+
+kable(list(hiper,diabetes), 
+      booktabs = T, 
+      digits = 3,
+      caption = "Tabela de contingência das variáveis Hipertensão e Diabetes.") %>% 
+  kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+```
+
+```{r coefi_final}
+
+# Valores obtidos dos coeficientes do modelo, para regularizacao ridge, lasso e 
+# lasso + treino + valid (ajuste escolhido)
+
+kable(Coef_final, 
+      booktabs = T, linesep = "",
+      caption = "Coeficientes do modelo com regularização ridge (Treino), lasso (Treino) e lasso (Treino e Validação).",
+      col.names = c("Estimadores Ridge (Treino)","Estimadores Lasso (Treino)", "Estimadores Lasso (Treino com Validação)"),
+      digits = 3,
+      escape = F) %>%
+      kable_styling(latex_options = "HOLD_position", font_size = 10)
+
+```
+
+\newpage
+
+\subsection{Gráficos}
+
+```{r cor, fig.width = 10, fig.height = 10, fig.cap = "Correlação entre as variáveis preditoras."}
+
+# Boxplot 
+
+cont_Vars = treino_e_valid %>% 
+  select(age, cigsPerDay, totChol, sysBP, diaBP, BMI, heartRate, glucose) %>% 
+  rename(Idade = age, 
+         CigsPorDia = cigsPerDay, 
+         ColTotal = totChol, 
+         PSSist = sysBP, 
+         PSDias = diaBP, 
+         IMC = BMI, 
+         FreqCard = heartRate, 
+         Glicose = glucose)
+
+cat_Vars = treino_e_valid %>% 
+  select(male, currentSmoker, BPMeds, prevalentStroke, prevalentHyp, diabetes) %>% 
+  rename(Sexo = male, Fumante = currentSmoker, AVC = prevalentStroke,
+         Hipertensao = prevalentHyp, Diabetes = diabetes, 
+         PSMeds = BPMeds) %>% 
+  mutate_if(is.numeric,as.factor)
+
+Vars = cbind(cat_Vars, cont_Vars)
+
+correlacoes = hetcor(Vars)[1]
+
+df_cor = as.data.frame(correlacoes[1]) %>% 
+  mutate_if(is.numeric, round, digits = 4)
+
+df_cor[is.na(df_cor)] = 0
+
+colnames(df_cor) = c("Sexo", "Fumante", "PSMeds", "AVC", 
+                     "Hipertensao", "Diabetes","Idade", "CigsPorDia",
+                     "ColTotal", "PSSist", "PSDias", "IMC", "FreqCard", "Glicose")
+
+ggcorrplot(df_cor, hc.order = TRUE, type = "lower", outline.col = "white", lab = TRUE, digits = 3)
+
+```
+
+
+```{r cigs, warning= FALSE, message= FALSE, fig.cap = "Boxplot do número de cigarros por dia  pelo risco de ter doença cardíaca em 10 anos.", fig.height = 3, fig.width = 5, fig.align = "center"}
+
+# Boxplot
+
+treino_e_valid %>% 
+  ggplot(aes(x = as.factor(TenYearCHD), 
+             y = cigsPerDay,
+             color = as.factor(TenYearCHD), 
+             fill = as.factor(TenYearCHD))) +
+  geom_boxplot() +
+  scale_color_manual(values = c("blue", "red"), guide = FALSE) +
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"), 
+                    values = c("lightblue", "lightpink")) +
+  labs(y = "Número de cigarros por dia", 
+       x = "Risco de doença cardíaca") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x = element_text(size = 7),
+          panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+```
+
+
+```{r pssist, warning= FALSE, message= FALSE, fig.cap = "Boxplot da pressão sanguínea sistólica e diastólica por risco de ter doença cardíaca em 10 anos.", fig.height = 3.5, fig.width = 5.5, fig.align = "center"}
+
+# Boxplots
+
+grafPSS = treino_e_valid %>% 
+  ggplot(aes(x = as.factor(TenYearCHD), 
+             y = sysBP, 
+             color = as.factor(TenYearCHD),
+             fill = as.factor(TenYearCHD))) +
+  geom_boxplot() +
+  scale_color_manual(values = c("blue", "red"), guide = FALSE) +
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"),
+                    values = c("lightblue", "lightpink")) +
+  labs(x = "Risco de doença cardíaca", y = "Pressão sanguínea sistólica") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x = element_text(size = 7),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+
+grafPSD = ggplot(treino_e_valid, aes(x = as.factor(TenYearCHD),
+                           y = diaBP,
+                           color = as.factor(TenYearCHD), 
+                           fill = as.factor(TenYearCHD))) +
+  geom_boxplot() +
+  scale_color_manual(values = c("blue", "red"), guide = FALSE) +
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"),
+                    values = c("lightblue", "lightpink")) +
+  labs(x = "Risco de doença cardíaca", y = "Pressão sanguínea diastólica") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x = element_text(size = 7),
+          panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+ggarrange(grafPSS, grafPSD, ncol = 2, common.legend = T, legend = "top")
+
+```
+
+```{r IMC, fig.cap = "Boxplots do nível de colesterol e IMC por risco de ter doença cardíaca em 10 anos.", fig.height = 3.5, fig.width = 5.5, fig.align = "center"}
+
+# Boxplots
+
+grafcol = treino_e_valid %>% 
+  ggplot(aes(x = as.factor(TenYearCHD),
+             y = totChol, 
+             color = as.factor(TenYearCHD),
+             fill = as.factor(TenYearCHD))) +
+  geom_boxplot() +
+  scale_color_manual(values = c("blue", "red"), guide = FALSE)+
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"), 
+                    values = c("lightblue", "lightpink")) +
+  labs(x = "Risco de doença cardíaca", y = "Colesterol total") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x = element_text(size = 7),
+          panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+grafICM = treino_e_valid %>% 
+  ggplot(aes(x = as.factor(TenYearCHD), 
+             y = BMI, 
+             color = as.factor(TenYearCHD),
+             fill = as.factor(TenYearCHD))) +
+  geom_boxplot() +
+  scale_color_manual(values = c("blue", "red"), guide=FALSE) +
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"), 
+                    values = c("lightblue", "lightpink")) +
+  labs(x = "Risco de doença cardíaca", y = "IMC") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x = element_text(size = 7),
+          panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+ggarrange(grafcol, grafICM, ncol = 2, common.legend = T, legend = "top")
+
+```
+
+
+```{r age, warning= FALSE, message= FALSE, fig.cap = "Histograma da idade conforme o risco de ter doença cardíaca em 10 anos.", fig.height = 4., fig.width = 7, fig.align = "center"}
+
+# Histograma
+
+treino_e_valid %>% 
+  ggplot(aes(age, 
+             color = as.factor(TenYearCHD), 
+             fill = as.factor(TenYearCHD))) + 
+  geom_histogram(bins = 39) +
+  scale_color_manual(values = c("blue", "red"), guide=FALSE) +
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"), 
+                    values = c("lightblue", "lightpink")) +
+  labs(x = "Idade", y = "Contagem") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x=element_text(size = 7),
+          panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+```
+
+
+```{r freq_cardio, warning= FALSE, message= FALSE, fig.cap= "Histograma da frequência cardíaca conforme o risco de ter doença cardíaca em 10 anos.", fig.height = 4., fig.width = 7, fig.align = "center"}
+
+# Histograma
+
+treino_e_valid %>% 
+  ggplot(aes(heartRate, 
+            color = as.factor(TenYearCHD), 
+            fill = as.factor(TenYearCHD))) + 
+  geom_histogram(bins = 100) + 
+  scale_color_manual(values = c("blue", "red"), guide=FALSE) +
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"), 
+                    values = c("lightblue", "lightpink")) +
+  labs(x = "Frequência cardíaca", y = "Contagem") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x = element_text(size = 7),
+          panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+```
+
+```{r glico, warning= FALSE, message= FALSE, fig.cap = "Gráfico da densidade de probabilidade do nível de glicose.", fig.height = 4., fig.width = 7, fig.align = "center"}
+
+# Densidade
+
+treino_e_valid %>% 
+  ggplot(aes(glucose, 
+             color = as.factor(TenYearCHD), 
+             fill = as.factor(TenYearCHD))) + 
+  geom_density() +
+  scale_color_manual(values = c("blue", "red"), guide = FALSE) +
+  scale_fill_manual(name = "Risco de doença cardíaca", 
+                    labels = c("Sem risco", "Com risco"), 
+                    values = c("lightblue", "lightpink")) +
+  labs(x = "Glicose", y = "Probabilidade") +
+  theme_bw() +
+  theme(legend.position = "top") +
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        legend.title = element_text(size = 8), 
+        legend.text = element_text(size = 7),
+        axis.text.x = element_text(size = 7),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+```
+
+```{r Croc, warning= FALSE, message= FALSE, fig.cap = "Curva ROC."}
+
+# Curva ROC
+
+test = as.matrix(teste[,-15])
+predicted = predict(lasso_train_e_valid, test, type = "response")
+ROCRPred = prediction(predicted, teste$TenYearCHD)
+ROCRPerf = performance(ROCRPred, "tpr", "fpr")
+
+plot(ROCRPerf, colorize = TRUE, print.cutoffs.at = c(0.1, 0.15, 0.3, 0.5), 
+     xlab = "Taxa de falsos-positivos", ylab = "Taxa de verdadeiros-positivos")
+
+```
