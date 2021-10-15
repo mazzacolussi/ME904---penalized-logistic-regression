@@ -98,6 +98,8 @@
 \begin{titlepage} 
 \begin{center} 
 
+\vfill
+\includegraphics[width=0.2\textwidth]{logo-imecc (1) (1).png}\\ [0.1in]
 
 {\large Universidade Estadual de Campinas}\\ [0.2cm] 
 {\large Instituto de Matemática, Estatística e Matemática Computacional - IMECC}\\ [0.2cm] 
@@ -135,7 +137,7 @@ variável resposta \(Y_i\) é uma função linear das preditoras
 \(X_{1i}, ..., X_{qi}\), com \(i = 1, ..., n\).
 
 \quad No entanto, há muitas situações em que não é razoável assumir que
-a variável resposta varie linearmente com relação às variáveis
+a variável resposta varie linearmente em relação às variáveis
 independentes, podendo ser mais apropriado considerar uma função \(g\).
 Esse tipo de problema motiva a criação dos modelos lineares
 generalizados, onde \(Y_i|X_{1i}, ..., X_{qi}\) não é mais
@@ -383,7 +385,7 @@ os três primeiros fossem significativos, conforme a Equação
 \label{eq:betas}
 \begin{cases}
 \beta_j = 1, \text{ para } j = 1, 2 \text{ e } 3; \\
-\beta_j = 0, \text{ para } 3 < j \leq 2000.
+\beta_j = 0, \text{ para } j = 4, ..., 2000.
 \end{cases}
 \end{eqnarray}
 
@@ -391,8 +393,8 @@ os três primeiros fossem significativos, conforme a Equação
 como zero convergiram rapidamente para esse valor, no caso da
 regularização \(\ell_1\). Em contrapartida, utilizando-se a
 regularização \(\ell_2\), os valores dos coeficientes nunca convergem
-para o valor nulo, por mais próximo que seja, \(\forall \lambda\). Além
-disso, para esse segundo método, a desprezível influência dos
+para o valor nulo, por mais próximos que sejam, \(\forall \lambda\).
+Além disso, para esse segundo método, a desprezível influência dos
 coeficientes simulados com valores nulos não foi percebida de imediato,
 dado o grande intervalo de valores considerado para o parâmetro de
 afinação, quando comparado ao primeiro método.
