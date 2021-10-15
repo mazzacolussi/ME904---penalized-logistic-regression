@@ -119,7 +119,7 @@ library(ROCR)
 
 \quad Um problema de regressão linear múltipla é um caso em que se assume a estrutura $Y_i = \beta_0 + \sum_{j=1}^q  \beta_j X_{ji} + \varepsilon_i$, onde $\varepsilon_i$, o termo de erro, é uma variável aleatória *i.i.d.* com distribuição normal, média $\mu$ e variância constante. Em outras palavras, assume-se que o valor esperado da variável resposta $Y_i$ é uma função linear das preditoras $X_{1i}, ..., X_{qi}$, com $i = 1, ..., n$.
 
-\quad No entanto, há muitas situações em que não é razoável assumir que a variável resposta varie linearmente com relação às variáveis independentes, podendo ser mais apropriado considerar uma função $g$. Esse tipo de problema motiva a criação dos modelos lineares generalizados, onde $Y_i|X_{1i}, ..., X_{qi}$ não é mais necessariamente uma variável aleatória com distribuição normal. Mais especificamente, na regressão logística, que é o caso particular de modelo linear generalizado de interesse, assume-se que $Y_i|X_{1i}, ..., X_{qi}$ possui distribuição binomial.
+\quad No entanto, há muitas situações em que não é razoável assumir que a variável resposta varie linearmente em relação às variáveis independentes, podendo ser mais apropriado considerar uma função $g$. Esse tipo de problema motiva a criação dos modelos lineares generalizados, onde $Y_i|X_{1i}, ..., X_{qi}$ não é mais necessariamente uma variável aleatória com distribuição normal. Mais especificamente, na regressão logística, que é o caso particular de modelo linear generalizado de interesse, assume-se que $Y_i|X_{1i}, ..., X_{qi}$ possui distribuição binomial.
 
 \quad O objetivo deste trabalho é explorar a regressão logística penalizada, ou seja, a aplicação de técnicas de regularização à regressão logística. Para isto, a seção seguinte introduzirá a regressão logística e os termos de penalização; na seção 3, será possível visualizar o funcionamento do método através de simulações, e, por fim, a última trará uma aplicação em dados reais.
 
@@ -527,7 +527,7 @@ ggarrange(graf_lasso, graf_ridge, ncol = 2)
 \label{eq:betas}
 \begin{cases}
 \beta_j = 1, \text{ para } j = 1, 2 \text{ e } 3; \\
-\beta_j = 0, \text{ para } 3 < j \leq 2000.
+\beta_j = 0, \text{ para } j = 4, ..., 2000.
 \end{cases}
 \end{eqnarray}
 
@@ -590,7 +590,7 @@ fit_lasso = train(
 
 ```
 
-\quad Da Figura \ref{fig:coefs2}, nota-se que os coeficientes simulados como zero convergiram rapidamente para esse valor, no caso da regularização $\ell_1$. Em contrapartida, utilizando-se a regularização $\ell_2$, os valores dos coeficientes nunca convergem para o valor nulo, por mais próximo que seja, $\forall \lambda$. Além disso, para esse segundo método, a desprezível influência dos coeficientes simulados com valores nulos não foi percebida de imediato, dado o grande intervalo de valores considerado para o parâmetro de afinação, quando comparado ao primeiro método.
+\quad Da Figura \ref{fig:coefs2}, nota-se que os coeficientes simulados como zero convergiram rapidamente para esse valor, no caso da regularização $\ell_1$. Em contrapartida, utilizando-se a regularização $\ell_2$, os valores dos coeficientes nunca convergem para o valor nulo, por mais próximos que sejam, $\forall \lambda$. Além disso, para esse segundo método, a desprezível influência dos coeficientes simulados com valores nulos não foi percebida de imediato, dado o grande intervalo de valores considerado para o parâmetro de afinação, quando comparado ao primeiro método.
 
 ```{r coefs2, fig.cap = "Gráficos dos valores de lambda em relação aos coeficientes obtidos da regularização Lasso e Ridge, para n < q.", echo = FALSE, warning = FALSE, message = FALSE, fig.height = 4, fig.width = 8, fig.align = "center"}
 
